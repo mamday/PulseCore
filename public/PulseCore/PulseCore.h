@@ -1,5 +1,7 @@
-#ifndef PULSECORE 
-#define PULSECORE 
+// $Id$
+
+#ifndef PULSECORE_H 
+#define PULSECORE_H 
 
 #include <icetray/I3ConditionalModule.h>
 #include <icetray/I3Frame.h>
@@ -19,7 +21,8 @@ class PulseCore : public I3ConditionalModule{
     void Physics(I3FramePtr frame);
     void Finish();
   private:
+    std::string inputPulses_;
     SET_LOGGER("PulseCore");
 };
 
-#endif //PULSECORE
+#endif //PULSECORE_H

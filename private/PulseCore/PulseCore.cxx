@@ -6,24 +6,24 @@
 
 //} 
 
-~PulseCore(){}
+PulseCore::~PulseCore(){}
 
-PulseCore::PulseCore(const I3Context ctx) : I3ConditionalModule(context)
+PulseCore::PulseCore(const I3Context& ctx) : I3ConditionalModule(ctx)
 {
-  AddOutBox("OutBox")
+  AddOutBox("OutBox");
 
-  inputPulses_ = ""
+  inputPulses_ = "";
 
   AddParameter("InputPulses",
                "Name of the input I3RecoPulseSeriesMap",
                 inputPulses_);
 }
 
-PulseCore::Configure(){
+void PulseCore::Configure(){
   GetParameter("InputPulses", inputPulses_);
 }
 
-PulseCore::Physics(){
+void PulseCore::Physics(I3FramePtr frame){
   if(!frame->Has(inputPulses_)){
     log_warn("No input pulses");
     PushFrame(frame, "OutBox");
@@ -32,6 +32,6 @@ PulseCore::Physics(){
   std::cout<<inputPulses_<<std::endl;
 }
 
-PulseCore::Finish(){
+void PulseCore::Finish(){
   log_trace("PulseCore::Finish()");
 }
