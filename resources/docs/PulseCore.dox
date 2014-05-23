@@ -1,0 +1,7 @@
+/**
+@mainpage PulseCore
+@author Melanie Day (melanie.day@icecube.wisc.edu)
+
+@section Description
+Gets pulses from specified number of strings
+*/

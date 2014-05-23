@@ -1,0 +1,14 @@
+i3_project(PulseCore
+  PYTHON_DIR python
+  PYTHON_DEST icecube/PulseCore  
+  DOCS_DIR resources/docs       )
+
+i3_add_library(SeededRTCleaning 
+  private/PulseCore/*.cxx 
+
+  USE_TOOLS boost python
+
+  USE_PROJECTS icetray dataclasses
+
+)
+

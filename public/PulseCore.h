@@ -16,7 +16,7 @@ class PulseCore : public I3ConditionalModule{
     PulseCore(const I3Context& ctx);
     virtual ~PulseCore();
     void Configure();
-    void Geometry(I3FramePtr frame);
+    void Physics(I3FramePtr frame);
     void Finish();
   private:
     SET_LOGGER("PulseCore");
