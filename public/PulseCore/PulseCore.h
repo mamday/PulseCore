@@ -22,6 +22,7 @@ class PulseCore : public I3ConditionalModule{
     void Finish();
   private:
     std::string inputPulses_;
+    std::string outputName_;
     SET_LOGGER("PulseCore");
 };
 
