@@ -1,5 +1,6 @@
 #include "PulseCore/PulseCore.h"
 #include <vector>
+#include <cmath>
 #include "dataclasses/I3MapOMKeyMask.h"
 
 //I3RecoPulseSeriesMap MergeSplits(I3RecoPulseSeriesMap& inMap){
@@ -7,6 +8,8 @@
 //} 
 
 I3_MODULE(PulseCore);
+
+typedef std::pair<double, double> dpair;
 
 struct MergePulses{
   std::vector<bool> merged;
@@ -48,29 +51,108 @@ void PulseCore::Physics(I3FramePtr frame){
     PushFrame(frame, "OutBox");
     return;
   }
+//Iterate over all DOMs in input pulse series 
   I3RecoPulseSeriesMapConstPtr pulses = frame->Get<I3RecoPulseSeriesMapConstPtr>(inputPulses_);
   for(I3RecoPulseSeriesMap::const_iterator pinfo = pulses->begin();
       pinfo!= pulses->end(); pinfo++){
     std::vector<I3RecoPulse> all_doms = pinfo->second;
+//Goofy struct - Probably want a class, TODO
     MergePulses domMerge;
+    std::vector<bool> all_merged;
+    all_merged.reserve(all_doms.size());
+//TODO: Make a simple function to do this
+    for(unsigned int i=0; i<all_doms.size(); i++){
+      all_merged.push_back(false);
+    }
+    domMerge.merged=all_merged;
+//Iterate over pulses on each DOM
     for(std::vector<I3RecoPulse>::const_iterator all_p = all_doms.begin();
         all_p!= all_doms.end(); all_p++){
-      if(all_p->GetCharge()>0.5){
-        domMerge.merged.push_back(true);
+//Case where there is only one pulse on a DOM
+      if(all_doms.size()==1){
+        domMerge.merged[domMerge.time.size()] = true;
         domMerge.charge.push_back(all_p->GetCharge());
         domMerge.time.push_back(all_p->GetTime());
+        continue;
       }
-//      if(all_p->GetFlags() & I3RecoPulse::ATWD){ std::cout<<"Woot! "<<" "<<all_p->GetCharge()<<std::endl;}
-//      else if(all_p->GetFlags() & I3RecoPulse::FADC){ std::cout<<"fADC but no ATWD"<<std::endl;}
-//      else{std::cout<<"Boo"<<std::endl;}
+//If ATWD information is available
+//TODO: Deal with edge case that there is a 0.5 charge pulse next to an FADC pulse
+      if(all_p->GetFlags() & I3RecoPulse::ATWD){
+        if(all_p->GetCharge()<0.5){
+//Low Charge Hit is closer to earlier hit/
+          if(fabs(all_doms[domMerge.time.size()-1].GetTime()-all_p->GetTime())<fabs(all_doms[domMerge.time.size()+1].GetTime()-all_p->GetTime()) || domMerge.time.size()==(all_doms.size()-1)){
+            domMerge.merged[domMerge.time.size()] = true;
+            domMerge.merged[domMerge.time.size()-1] = true;
+            domMerge.charge.push_back(all_p->GetCharge());
+            domMerge.time.push_back(domMerge.time[domMerge.time.size()-1]);
+            continue;
+          }
+//Low Charge Hit is closer to later hit
+          else if(fabs(all_doms[domMerge.time.size()-1].GetTime()-all_p->GetTime())>=fabs(all_doms[domMerge.time.size()+1].GetTime()-all_p->GetTime()) || domMerge.time.size()==0){
+            domMerge.merged[domMerge.time.size()] = true;
+            domMerge.merged[domMerge.time.size()+1] = true;
+            domMerge.charge.push_back(all_p->GetCharge());
+            domMerge.time.push_back(all_p->GetTime());
+            continue;
+          }
+        }//End 0.5 charge 
+//Get information for >0.5 pulses dependent on if they are merged with 0.5 charge pulses
+        if(domMerge.merged[domMerge.time.size()]){
+          domMerge.charge.push_back(all_p->GetCharge());
+          domMerge.time.push_back(domMerge.time[domMerge.time.size()-1]);
+        }
+        else{
+          domMerge.charge.push_back(all_p->GetCharge());
+          domMerge.time.push_back(all_p->GetTime());
+        }
+      }//End ATWD
+//If there is no ATWD information, keep the first time, keep all the charge
+      else{
+        double b_iter = domMerge.time.size();
+        for(unsigned int i=b_iter; 
+            i<all_doms.size(); i++){
+          domMerge.time.push_back(all_p->GetTime());
+          domMerge.charge.push_back(all_doms[i].GetCharge());
+          domMerge.merged[i]=true;
+        }
+        break;
+      }
+    }//End loop over DOMs
+//Loop over the pulses again and deal with the unmerged pulses
+    int stupid_iter = 0;
+    for(std::vector<I3RecoPulse>::const_iterator all_p = all_doms.begin();
+        all_p!= all_doms.end(); all_p++){
+      if(!domMerge.merged[stupid_iter]){
+        domMerge.charge[stupid_iter]=all_p->GetCharge();
+        domMerge.time[stupid_iter]=all_p->GetTime();
+        domMerge.merged[stupid_iter]=true;
+      }
+      stupid_iter+=1;
     }
-    for(std::vector<bool>::const_iterator bTest = domMerge.merged.begin();
-        bTest!=domMerge.merged.end(); bTest++){
-      if(*bTest){
-        std::cout<<"Tested"<<std::endl;
-      }
-    } 
-  }
+//    for(unsigned int i = 0;
+//        i<domMerge.time.size(); i++){
+//      if(domMerge.time.size()>1){
+//      if(!(domMerge.merged[i])){
+//        std::cout<<"Not Tested"<<std::endl;
+//        std::cout<<domMerge.charge[i]<<" "<<domMerge.time[i]<<std::endl;
+//      }
+//      else if(domMerge.merged[i]){
+//        std::cout<<"Tested"<<std::endl;
+//        std::cout<<domMerge.charge[i]<<" "<<domMerge.time[i]<<std::endl;
+//      }
+//    } 
+//  }
+//Get rounded total charge and charge weighted time for the DOM
+//TODO: Make this a function
+    dpair tcPair;
+    for(unsigned int i=0;
+        i<domMerge.time.size(); i++){
+      tcPair.first+=domMerge.charge[i]*domMerge.time[i];
+      tcPair.second+=domMerge.charge[i]; 
+    }
+    tcPair.first = tcPair.first/tcPair.second;
+    tcPair.second = round(tcPair.second);
+  }//End loop over pulses
 //TODO: Modify this to contain the pules after Pulse Coring
   I3RecoPulseSeriesMapConstPtr outputPulses = frame->Get<I3RecoPulseSeriesMapConstPtr>(inputPulses_);
 //Output final pulses to frame
