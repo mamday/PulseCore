@@ -1,7 +1,9 @@
 #include "PulseCore/PulseCore.h"
 #include <vector>
+#include <map>
 #include <cmath>
 #include "dataclasses/I3MapOMKeyMask.h"
+#include "icetray/OMKey.h"
 
 //I3RecoPulseSeriesMap MergeSplits(I3RecoPulseSeriesMap& inMap){
 
@@ -9,6 +11,7 @@
 
 I3_MODULE(PulseCore);
 
+//TODO: Move these to .h
 typedef std::pair<double, double> dpair;
 
 struct MergePulses{
@@ -51,10 +54,14 @@ void PulseCore::Physics(I3FramePtr frame){
     PushFrame(frame, "OutBox");
     return;
   }
+  std::map<double, double> stringCharge;
+  std::map<double, I3RecoPulseSeriesMap> stringPairs;
 //Iterate over all DOMs in input pulse series 
+  std::cout<<"Begin"<<std::endl;
   I3RecoPulseSeriesMapConstPtr pulses = frame->Get<I3RecoPulseSeriesMapConstPtr>(inputPulses_);
   for(I3RecoPulseSeriesMap::const_iterator pinfo = pulses->begin();
       pinfo!= pulses->end(); pinfo++){
+    OMKey key = pinfo->first;
     std::vector<I3RecoPulse> all_doms = pinfo->second;
 //Goofy struct - Probably want a class, TODO
     MergePulses domMerge;
@@ -68,6 +75,7 @@ void PulseCore::Physics(I3FramePtr frame){
 //Iterate over pulses on each DOM
     for(std::vector<I3RecoPulse>::const_iterator all_p = all_doms.begin();
         all_p!= all_doms.end(); all_p++){
+      std::cout<<key<<" "<<all_p->GetTime()<<std::endl;
 //Case where there is only one pulse on a DOM
       if(all_doms.size()==1){
         domMerge.merged[domMerge.time.size()] = true;
@@ -145,14 +153,28 @@ void PulseCore::Physics(I3FramePtr frame){
 //Get rounded total charge and charge weighted time for the DOM
 //TODO: Make this a function
     dpair tcPair;
+    I3RecoPulse myPulse;
     for(unsigned int i=0;
         i<domMerge.time.size(); i++){
       tcPair.first+=domMerge.charge[i]*domMerge.time[i];
       tcPair.second+=domMerge.charge[i]; 
     }
-    tcPair.first = tcPair.first/tcPair.second;
-    tcPair.second = round(tcPair.second);
+//Create I3RecoPulse to hold my fake pulse
+    myPulse.SetTime(tcPair.first/tcPair.second);
+    myPulse.SetCharge(round(tcPair.second));
+//Save total charge on string and I3RecoPulseSeriesMap with time, charge and omkey for this DOM
+    stringCharge[key.GetString()]+=tcPair.second;
+    stringPairs[key.GetString()][key].push_back(myPulse);
   }//End loop over pulses
+  for(std::map<double,I3RecoPulseSeriesMap>::const_iterator sIter=stringPairs.begin();
+      sIter!=stringPairs.end(); sIter++){ 
+      std::cout<<sIter->first<<std::endl;
+    for(I3RecoPulseSeriesMap::const_iterator rIter=sIter->second.begin();
+        rIter!=sIter->second.end(); rIter++) std::cout<<rIter->first<<" "<<rIter->second[0]<<std::endl;
+//    std::cout<<"String: "<<sIter->first<<" Charge: "<<sIter->second<<std::endl;
+  }
+
+
 //TODO: Modify this to contain the pules after Pulse Coring
   I3RecoPulseSeriesMapConstPtr outputPulses = frame->Get<I3RecoPulseSeriesMapConstPtr>(inputPulses_);
 //Output final pulses to frame
