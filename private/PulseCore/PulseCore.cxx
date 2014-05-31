@@ -184,18 +184,31 @@ void PulseCore::Physics(I3FramePtr frame){
 
 //TODO: Make this a function
 //  I3RecoPulseSeriesMapMask myMask;
+  std::cout<<"Begin"<<std::endl;
   std::vector<double> selStrings;
-  double firstString = 0;
   for(unsigned int i=0; i<nStrings_; i++){
     double firstCharge = 0;
     for(string_om_map_vec::const_iterator fIter=stringPairs.begin();
       fIter!=stringPairs.end(); fIter++){
+      //std::cout<<"Pairs "<<fIter->size()<<std::endl;
 //Only look at strings with charge > 2 p.e
+      std::cout<<"Before String: "<<fIter->begin()->first<<" Time: "<<fIter->begin()->second.begin()->second.GetTime()<<" Charge: "<<fIter->begin()->second.begin()->second.GetCharge()<<std::endl;
       if(fIter->begin()->second.begin()->second.GetCharge()<3) continue;
+//Get the first nString_ string numbers
+      if(selStrings.empty()){
+        selStrings.push_back(fIter->begin()->first);
+      }
+      else{
+        if(selStrings.size()==i){
+          bool prevString = false;
+          for(unsigned int j=0; j<i; j++){
+            if(fIter->begin()->first==selStrings[j]) prevString=true;
+          }
+          if(!prevString) selStrings.push_back(fIter->begin()->first);
+          else continue;
+        }
+      }
 
-
-//      for(string_om_map::const_iterator sIter=fIter->begin();
-//          sIter!=fIter->end(); sIter++){
 //        if(firstString==0){
 //          firstString = sIter->first;
 //          selStrings.push_back(firstString);
@@ -209,21 +222,20 @@ void PulseCore::Physics(I3FramePtr frame){
 //            firstString = sIter->first;
 //            selStrings.push_back(firstString);
 //          }
-
-
 //    }
 //        std::cout<<"First: "<<i<<" "<<selStrings.size()<<" "<<firstString<<std::endl;
 
-//        if(sIter->first==firstString){
+
+      if(selStrings.size()==(i+1) && fIter->begin()->first==selStrings[i]){
+        std::cout<<i<<" "<<fIter->begin()->first<<" "<<fIter->begin()->second.begin()->second.GetTime()<<" "<<fIter->begin()->second.begin()->second.GetCharge()<<std::endl;
 //          while(firstCharge<pCharge_*stringCharge[sIter->first]){
 //            firstCharge+=sIter->second.begin()->second.GetCharge();
 //            std::cout<<sIter->first<<" "<<firstCharge<<" "<<pCharge_<<" "<<sIter->second.begin()->second.GetCharge()<<std::endl;
 //          }
-//        }
-//      }
-
+      }
+      else continue;
 //Keep information only for the first nStrings_ strings
-      std::cout<<" String: "<<fIter->begin()->first<<" Charge: "<<fIter->begin()->second.begin()->second.GetCharge()<<std::endl;
+      std::cout<<" String: "<<fIter->begin()->first<<" Time: "<<fIter->begin()->second.begin()->second.GetTime()<<" Charge: "<<fIter->begin()->second.begin()->second.GetCharge()<<std::endl;
     }
   }  
 
