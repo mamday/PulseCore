@@ -13,6 +13,15 @@ I3_MODULE(PulseCore);
 
 //TODO: Move these to .h
 typedef std::pair<double, double> dpair;
+typedef std::vector<std::map<double, std::map<OMKey, I3RecoPulse> > > string_om_map_vec;
+typedef std::map<double, std::map<OMKey, I3RecoPulse> > string_om_map;
+typedef std::map<OMKey, I3RecoPulse> om_map;
+
+static bool PulseCompare(const string_om_map &m1, const string_om_map &m2)
+{
+//Whee! This is comparing I3RecoPulses from the string_om_map in the end
+  return m1.begin()->second.begin()->second.GetTime() < m2.begin()->second.begin()->second.GetTime();
+}
 
 struct MergePulses{
   std::vector<bool> merged;
@@ -28,18 +37,28 @@ PulseCore::PulseCore(const I3Context& ctx) : I3ConditionalModule(ctx)
 
   inputPulses_ = "";
   outputName_ = "PulseCorePulses";
+  nStrings_ = 3;
+  pCharge_ = 0.68;
   AddParameter("InputPulses",
                "Name of the input I3RecoPulseSeriesMap",
                 inputPulses_);
   AddParameter("OutputName",
                "Name of the output",
                 outputName_);
+  AddParameter("NStrings",
+               "Number of strings to keep in the final pulse series",
+                nStrings_);
+  AddParameter("PercentCharge",
+               "Percent of total charge to keep on each string",
+                pCharge_);
   return;
 }
 
 void PulseCore::Configure(){
   GetParameter("InputPulses", inputPulses_);
   GetParameter("OutputName", outputName_);
+  GetParameter("NStrings", nStrings_);
+  GetParameter("PercentCharge", pCharge_);
   return;
 }
 
@@ -55,27 +74,28 @@ void PulseCore::Physics(I3FramePtr frame){
     return;
   }
   std::map<double, double> stringCharge;
-  std::map<double, I3RecoPulseSeriesMap> stringPairs;
+//Whee! Something that is iterable for sorting...
+  string_om_map_vec stringPairs;
 //Iterate over all DOMs in input pulse series 
-  std::cout<<"Begin"<<std::endl;
+//TODO: Make this a function
   I3RecoPulseSeriesMapConstPtr pulses = frame->Get<I3RecoPulseSeriesMapConstPtr>(inputPulses_);
   for(I3RecoPulseSeriesMap::const_iterator pinfo = pulses->begin();
       pinfo!= pulses->end(); pinfo++){
     OMKey key = pinfo->first;
-    std::vector<I3RecoPulse> all_doms = pinfo->second;
-//Goofy struct - Probably want a class, TODO
+    I3RecoPulseSeries all_doms = pinfo->second;
+//Goofy struct TODO
     MergePulses domMerge;
     std::vector<bool> all_merged;
     all_merged.reserve(all_doms.size());
-//TODO: Make a simple function to do this
+//TODO: Make a simple function to intitialze the vector
     for(unsigned int i=0; i<all_doms.size(); i++){
       all_merged.push_back(false);
     }
     domMerge.merged=all_merged;
 //Iterate over pulses on each DOM
-    for(std::vector<I3RecoPulse>::const_iterator all_p = all_doms.begin();
+//TODO: Something better than using domMerge.time.size() to keep track of where I am in the pulse series
+    for(I3RecoPulseSeries::const_iterator all_p = all_doms.begin();
         all_p!= all_doms.end(); all_p++){
-      std::cout<<key<<" "<<all_p->GetTime()<<std::endl;
 //Case where there is only one pulse on a DOM
       if(all_doms.size()==1){
         domMerge.merged[domMerge.time.size()] = true;
@@ -127,6 +147,7 @@ void PulseCore::Physics(I3FramePtr frame){
       }
     }//End loop over DOMs
 //Loop over the pulses again and deal with the unmerged pulses
+//TODO: Something better than stupid_iter
     int stupid_iter = 0;
     for(std::vector<I3RecoPulse>::const_iterator all_p = all_doms.begin();
         all_p!= all_doms.end(); all_p++){
@@ -137,19 +158,7 @@ void PulseCore::Physics(I3FramePtr frame){
       }
       stupid_iter+=1;
     }
-//    for(unsigned int i = 0;
-//        i<domMerge.time.size(); i++){
-//      if(domMerge.time.size()>1){
-//      if(!(domMerge.merged[i])){
-//        std::cout<<"Not Tested"<<std::endl;
-//        std::cout<<domMerge.charge[i]<<" "<<domMerge.time[i]<<std::endl;
-//      }
-//      else if(domMerge.merged[i]){
-//        std::cout<<"Tested"<<std::endl;
-//        std::cout<<domMerge.charge[i]<<" "<<domMerge.time[i]<<std::endl;
-//      }
-//    } 
-//  }
+
 //Get rounded total charge and charge weighted time for the DOM
 //TODO: Make this a function
     dpair tcPair;
@@ -159,20 +168,73 @@ void PulseCore::Physics(I3FramePtr frame){
       tcPair.first+=domMerge.charge[i]*domMerge.time[i];
       tcPair.second+=domMerge.charge[i]; 
     }
-//Create I3RecoPulse to hold my fake pulse
+//Create I3RecoPulse to hold my fake pulse. Make a map to the OMKey, then make another map to the string 
     myPulse.SetTime(tcPair.first/tcPair.second);
     myPulse.SetCharge(round(tcPair.second));
-//Save total charge on string and I3RecoPulseSeriesMap with time, charge and omkey for this DOM
+    om_map myPMap;
+    myPMap[key]=myPulse;
+    string_om_map mySMap;
+    mySMap[key.GetString()]=myPMap;
+//Save total charge on string and push back map of maps with time, charge and omkey for this DOM
     stringCharge[key.GetString()]+=tcPair.second;
-    stringPairs[key.GetString()][key].push_back(myPulse);
+    stringPairs.push_back(mySMap);
   }//End loop over pulses
-  for(std::map<double,I3RecoPulseSeriesMap>::const_iterator sIter=stringPairs.begin();
-      sIter!=stringPairs.end(); sIter++){ 
-      std::cout<<sIter->first<<std::endl;
-    for(I3RecoPulseSeriesMap::const_iterator rIter=sIter->second.begin();
-        rIter!=sIter->second.end(); rIter++) std::cout<<rIter->first<<" "<<rIter->second[0]<<std::endl;
-//    std::cout<<"String: "<<sIter->first<<" Charge: "<<sIter->second<<std::endl;
-  }
+//Sort by pulse time
+  std::sort(stringPairs.begin(),stringPairs.end(),PulseCompare);
+
+//TODO: Make this a function
+//  I3RecoPulseSeriesMapMask myMask;
+  std::vector<double> selStrings;
+  double firstString = 0;
+  for(unsigned int i=0; i<nStrings_; i++){
+    double firstCharge = 0;
+    for(string_om_map_vec::const_iterator fIter=stringPairs.begin();
+      fIter!=stringPairs.end(); fIter++){
+//Only look at strings with charge > 2 p.e
+      if(fIter->begin()->second.begin()->second.GetCharge()<3) continue;
+
+
+//      for(string_om_map::const_iterator sIter=fIter->begin();
+//          sIter!=fIter->end(); sIter++){
+//        if(firstString==0){
+//          firstString = sIter->first;
+//          selStrings.push_back(firstString);
+//        }
+//        else{ 
+//          if(*find(selStrings.begin(),selStrings.end(),sIter->first)>0){
+//            std::cout<<"Found: "<<i<<" "<<sIter->first<<" "<<*find(selStrings.begin(),selStrings.end(),sIter->first)<<std::endl;
+//            continue;
+//          }
+//          else{
+//            firstString = sIter->first;
+//            selStrings.push_back(firstString);
+//          }
+
+
+//    }
+//        std::cout<<"First: "<<i<<" "<<selStrings.size()<<" "<<firstString<<std::endl;
+
+//        if(sIter->first==firstString){
+//          while(firstCharge<pCharge_*stringCharge[sIter->first]){
+//            firstCharge+=sIter->second.begin()->second.GetCharge();
+//            std::cout<<sIter->first<<" "<<firstCharge<<" "<<pCharge_<<" "<<sIter->second.begin()->second.GetCharge()<<std::endl;
+//          }
+//        }
+//      }
+
+//Keep information only for the first nStrings_ strings
+      std::cout<<" String: "<<fIter->begin()->first<<" Charge: "<<fIter->begin()->second.begin()->second.GetCharge()<<std::endl;
+    }
+  }  
+
+
+//  for(std::vector<std::map<double,std::map<OMKey, I3RecoPulse> > >::iterator sIter=stringPairs.begin();
+//      sIter!=stringPairs.end(); sIter++){ 
+//    for(std::map<OMKey,I3RecoPulse>::iterator rIter=sIter->second.begin();
+//     rIter!=sIter->second.end(); rIter++){
+//      std::cout<<" String: "<<sIter->begin()->second.begin()->first<<" Charge: "<<sIter->begin()->second.begin()->second.GetCharge()<<" Time: "<<sIter->begin()->second.begin()->second.GetTime()<<std::endl;
+//  }
+//  }
 
 
 //TODO: Modify this to contain the pules after Pulse Coring
