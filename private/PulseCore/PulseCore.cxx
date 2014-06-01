@@ -183,16 +183,14 @@ void PulseCore::Physics(I3FramePtr frame){
   std::sort(stringPairs.begin(),stringPairs.end(),PulseCompare);
 
 //TODO: Make this a function
-//  I3RecoPulseSeriesMapMask myMask;
-  std::cout<<"Begin"<<std::endl;
+  std::vector<OMKey> selKeys;
   std::vector<double> selStrings;
+//Get pulses for first nStrings_ strings
   for(unsigned int i=0; i<nStrings_; i++){
     double firstCharge = 0;
     for(string_om_map_vec::const_iterator fIter=stringPairs.begin();
       fIter!=stringPairs.end(); fIter++){
-      //std::cout<<"Pairs "<<fIter->size()<<std::endl;
 //Only look at strings with charge > 2 p.e
-      std::cout<<"Before String: "<<fIter->begin()->first<<" Time: "<<fIter->begin()->second.begin()->second.GetTime()<<" Charge: "<<fIter->begin()->second.begin()->second.GetCharge()<<std::endl;
       if(fIter->begin()->second.begin()->second.GetCharge()<3) continue;
 //Get the first nString_ string numbers
       if(selStrings.empty()){
@@ -208,51 +206,44 @@ void PulseCore::Physics(I3FramePtr frame){
           else continue;
         }
       }
-
-//        if(firstString==0){
-//          firstString = sIter->first;
-//          selStrings.push_back(firstString);
-//        }
-//        else{ 
-//          if(*find(selStrings.begin(),selStrings.end(),sIter->first)>0){
-//            std::cout<<"Found: "<<i<<" "<<sIter->first<<" "<<*find(selStrings.begin(),selStrings.end(),sIter->first)<<std::endl;
-//            continue;
-//          }
-//          else{
-//            firstString = sIter->first;
-//            selStrings.push_back(firstString);
-//          }
-//    }
-//        std::cout<<"First: "<<i<<" "<<selStrings.size()<<" "<<firstString<<std::endl;
-
-
+//Keep DOMs on string with the first pCharge_ percent of charge
       if(selStrings.size()==(i+1) && fIter->begin()->first==selStrings[i]){
-        std::cout<<i<<" "<<fIter->begin()->first<<" "<<fIter->begin()->second.begin()->second.GetTime()<<" "<<fIter->begin()->second.begin()->second.GetCharge()<<std::endl;
-//          while(firstCharge<pCharge_*stringCharge[sIter->first]){
-//            firstCharge+=sIter->second.begin()->second.GetCharge();
-//            std::cout<<sIter->first<<" "<<firstCharge<<" "<<pCharge_<<" "<<sIter->second.begin()->second.GetCharge()<<std::endl;
-//          }
+          if(firstCharge<pCharge_*stringCharge[fIter->begin()->first]){
+            firstCharge+=fIter->begin()->second.begin()->second.GetCharge();
+            selKeys.push_back(fIter->begin()->second.begin()->first);
+          }
       }
       else continue;
-//Keep information only for the first nStrings_ strings
-      std::cout<<" String: "<<fIter->begin()->first<<" Time: "<<fIter->begin()->second.begin()->second.GetTime()<<" Charge: "<<fIter->begin()->second.begin()->second.GetCharge()<<std::endl;
     }
   }  
 
+//Loop through the pulses again and add the pulses to the mask if the OMKey passed the previous requirements
+//TODO: Make this a function
+  I3RecoPulseSeriesMap selMap;
+  for(I3RecoPulseSeriesMap::const_iterator pinfo = pulses->begin();
+      pinfo!= pulses->end(); pinfo++){
+    OMKey key = pinfo->first;
+    I3RecoPulseSeries all_doms = pinfo->second;
+    I3RecoPulseSeries selPulse;
+    for(std::vector<I3RecoPulse>::const_iterator all_p = all_doms.begin();
+        all_p!= all_doms.end(); all_p++){
+      for(std::vector<OMKey>::const_iterator oIter=selKeys.begin();
+          oIter!=selKeys.end(); oIter++){
+        if(key==(*oIter)){
+          selPulse.push_back((*all_p));
+        }
+      }
+    }
+    if(!(selPulse.empty())) selMap[key]=selPulse;
+  }
+  
+//Sanitize the output
+  I3RecoPulseSeriesMapMaskPtr myMask = boost::make_shared<I3RecoPulseSeriesMapMask>(*frame,inputPulses_,selMap);
 
-//  for(std::vector<std::map<double,std::map<OMKey, I3RecoPulse> > >::iterator sIter=stringPairs.begin();
-//      sIter!=stringPairs.end(); sIter++){ 
-//    for(std::map<OMKey,I3RecoPulse>::iterator rIter=sIter->second.begin();
-//     rIter!=sIter->second.end(); rIter++){
-//      std::cout<<" String: "<<sIter->begin()->second.begin()->first<<" Charge: "<<sIter->begin()->second.begin()->second.GetCharge()<<" Time: "<<sIter->begin()->second.begin()->second.GetTime()<<std::endl;
-//  }
-//  }
-
-
-//TODO: Modify this to contain the pules after Pulse Coring
-  I3RecoPulseSeriesMapConstPtr outputPulses = frame->Get<I3RecoPulseSeriesMapConstPtr>(inputPulses_);
+//  I3RecoPulseSeriesMapConstPtr testMap = myMask->Apply(*frame);
+//  std::cout<<(*pulses).size()<<" "<<(*testMap).size()<<std::endl;
 //Output final pulses to frame
-  frame->Put(outputName_,outputPulses);
+  frame->Put(outputName_,myMask);
   PushFrame(frame, "OutBox");
 
   return;
