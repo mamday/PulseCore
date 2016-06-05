@@ -1,7 +1,59 @@
-/**
-@mainpage PulseCore
-@author Melanie Day (melanie.day@icecube.wisc.edu)
-
-@section Description
-Gets pulses from specified number of strings
+/*!
+*\mainpage PulseCore
+*\author Melanie (I have no d*** idea how to use doxygen) Day (melanie.day@icecube.wisc.edu)
+*\section PulseCore Algorithm Description
+*Gets earliest pulses from specified number of strings
+*
+*\section Types, Structs, Methods, Member Variables (with module parameter relationship) 
+* Types
+*
+* dpair - A std::pair of doubles
+* dpair_map - A std::map of double to dpair
+* om_map - An std::map of an OMKey to an I3RecoPulse
+* string_om_map - a std::map of a double to an om_map
+* string_om_map_vec - A std::vector of string_om_maps 
+*  
+* Structs
+*
+* MergePulses - Holds merged boolean (true if merged otherwise false), charge and time of the current pulse
+*
+* MapValueComp - A struct that exists to make it possible to sort I3RecoPulses by various properties because having a default algorithm that did it would be complete madness. Honestly I got it from Stack Overflow and only sort of kind of know how it works
+*
+* PulseCore Class Methods
+*
+*  Configure(), Physics(I3FramePtr frame), Finish() - IceTray Module requirements. I only tell the module how to work on a Physics frame, not a DAQ frame
+*
+*  MakeStringInfo(I3RecoPulseSeriesMapConstPtr pulses, std::map<double, double> &stringCharge) - This algorithm is almost entirely to merge pulses with less than 0.5 p.e. with adjacent pulses, and then to calculate the average time and charge on each DOM with the merged pulses. It is relatively well known that wavedeform clips the pulses sometimes so that some pulses get split into large pulses and little <0.5 p.e. pulses. Since I want to know the charge weighted average time and charge weighted variance in time, these little fake pulses can cause a lot of trouble. Then it gets the information about the time and charge of the "pulse" that remains after it is either merged or not and creates a new object to hold the "pulses" which is called "domMerge" (and is a MergePulses struct). By iterating over domMerge the average charge and time for the OM can be calculated. The average time and charge are saved as a single fake pulse called "myPulse", and the single "pulse" for that OM is saved in an om_map called myPMap. The om_maps are then saved in a string_om_map called mySMap which is then saved as the class member variable stringPairs_. I deal with several edge cases (ATWD vs fADC, if there is only a single pulse, etc). )
+*
+*  SelectStrings(std::map<double, double> stringCharge, std::vector<OMKey> &selKeys) - Select nStrings_ strings with charge > cCharge_, excluding DOMs with time outside  mTime_ multiples of the charge weighted standard deviation of the pulse times, or if the time is outside timeWindow_ from the string with the most charge. Order charge accumulation in time and discard DOMs after pCharge_ percentage of charge has been accumulated on the string. Modify stringPairs_ to remove all the rejected DOMs and strings. Returns the selected OMKeys as selKeys. 
+*
+*  I3RecoPulseSeriesMapFromKeys(std::vector<OMKey> selKeys, I3RecoPulseSeriesMapConstPtr pulses, I3RecoPulseSeriesMap &selMap) - Convert selected keys into an I3RecoPulseSeriesMap selMap 
+*
+* Static Methods (Why did I make them static? Possibly I was trying to show that I knew how? Possibly because I considered them external to PulseCore and was considering creating a 'tools' type class and just never did?)
+* 
+*  PulseCompare(const string_om_map &m1, const string_om_map &m2) - Get a boolean that tells if the time of m1 is less than m2 (true) or greater (false) 
+*
+*  StringCWTimeMean(string_om_map_vec stringPairs_, std::map<double,double> stringCharge) - Get the charge weighted average time on a strings stringPairs_ and charge stringCharge 
+*
+*  StringCWTimeVar(string_om_map_vec stringPairs_, std::map<double,double> mean, std::map<double,double> stringCharge_) - Get the charge weighted variance of the time on the strings stringPairs_ with charge stringCharge
+*
+****** PulseCore()::Physics(I3FramePtr frame) ********************************* Get charge on each string with reasonable times based on understanding of pulses on each DOM. Sort by pulse time. Select strings based on the parameters that were given to the algorithm (MakeStringInfo). Use the selected keys selKeys (from SelectStrings) to make an I3RecoPulseSeriesMap selMap (using I3RecoPulseSeriesMapFromKeys). Convert this to an I3RecoPulseSeriesMapMaskPtr that can be outputed to a frame. 
+******************************************************************************* 
+* 
+*  Member Variables
+* 
+*  nStrings_ - Number of strings to keep in the final pulse series (default 3) 
+*  pCharge_ - Percent of total charge to keep on each string (default 66%) 
+*  mTime_ - Multiple of charge weighted standard deviation of string pulse times from charge weighted average to keep on each string (default 0, which tells the algorithm not to use mTime_) 
+*  timeWindow_ - Time window around string with maximum charge (default 10000) 
+*  cCharge_ - Minimum p.e. on each final selected string (default 2 p.e.) 
+*
+*  Additional Parameters
+*  
+*  InputPulses - Name of the input I3RecoPulseSeriesMap
+*  OutputName - Name of the output
+*
+*\section Explanation of Test script (resources/scripts/test.py) 
+*
+* This uses PulseCore hits to implement a vertex cut. The frame adds pulses that are cleaned using StaticTWC and SeededRT cleaning. Then I extract the "standard" PulseCore strings (The first 66% of charge in time on DOMS with at least 2 p.e.e of charge, without implementing mTime_, in a time window of 10000 ns around the mean for 3 strings) and this is called 'String3Pulses'. After I extract the pulses for only 1 string, with all the other values set at default and itis called 'String1Pulses'. The method PCVertCut then finds the center of gravity of the pulses that were selected and rejects the 'vertex' from the COG if it is 180 m from the center (29.3 in x and 52.6 in y), above -180 in z or below -500 in z. 
 */
